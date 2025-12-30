@@ -18,42 +18,51 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
 
   // --- 生成逻辑 ---
-  const handleGenerate = async () => {
+const handleGenerate = async () => {
     if (!prompt) return alert("请输入内容");
     setLoading(true);
     setResult(null);
-    setCurrentPage(1); // 生成新绘本时重置为第1页
+    setCurrentPage(1);
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 【修复】将角色和风格参数也传给后端
-        body: JSON.stringify({ 
-          prompt,
-          role,
-          style 
-        }),
+        body: JSON.stringify({ prompt, role, style }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
         let finalData = data.output;
-        // 解析百炼返回的字符串格式JSON
-        if (typeof data.output.text === 'string') {
-          try {
-            finalData = JSON.parse(data.output.text);
-          } catch (e) {
-            console.error("解析 text 字段失败:", e);
+        
+        // --- 核心修复逻辑开始 ---
+        if (finalData && typeof finalData.text === 'string') {
+          const trimmedText = finalData.text.trim();
+          
+          // 只有当字符串以 { 或 [ 开头时，才尝试进行 JSON 解析
+          if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+            try {
+              finalData = JSON.parse(trimmedText);
+            } catch (e) {
+              console.warn("检测到 JSON 格式但解析失败，保持原样", e);
+              // 如果解析失败，finalData 保持为原本的对象
+            }
+          } else {
+            // 如果字符串不是 JSON 格式（比如直接是一个 URL）
+            // 我们手动把它包装成页面需要的格式：{ "1": "url..." }
+            finalData = { "1": trimmedText };
           }
         }
+        // --- 核心修复逻辑结束 ---
+        
         setResult(finalData); 
       } else {
         alert("生成出错：" + (data.error || "未知错误"));
       }
     } catch (error) {
-      alert("网络错误，请稍后再试");
+      console.error("请求失败:", error);
+      alert("网络连接失败，请检查终端运行状态");
     } finally {
       setLoading(false);
     }
@@ -243,4 +252,5 @@ export default function Home() {
       </main>
     </div>
   );
+  
 }
