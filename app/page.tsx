@@ -1,58 +1,102 @@
 "use client";
 
 import { useState } from 'react';
-import { 
-  Loader2, Music, BookOpen, Send, Sparkles, 
-  User, Baby, Mic, Keyboard, Dog, UserRound, 
-  ChevronLeft, ChevronRight 
-} from 'lucide-react';
+import { Loader2, Music, BookOpen, ChevronLeft, ChevronRight, Sparkles, Mic, Keyboard, Lock } from 'lucide-react';
 
-export default function Home() {
+// --- 1. 定义数据元组 (Tuples) ---
+const MODE_DATA = [
+  { id: 'text', name: '文字输入', icon: '/images/keyboard.png' },
+  { id: 'voice', name: '语音输入', icon: '/images/mic-small.png' },
+];
+
+const VOICE_DATA = [
+  { id: 'mom', name: '温柔妈妈音', icon: '/images/voice1.png' },
+  { id: 'brother', name: '活泼哥哥音', icon: '/images/voice2.png' },
+  { id: 'owl', name: '智慧爷爷音', icon: '/images/voice3.png' },
+  { id: 'frog', name: '搞怪宝宝音', icon: '/images/voice4.png' },
+];
+
+const STYLE_DATA = [
+  { id: '3d', name: '3D皮克斯', icon: '/images/type1.png' },
+  { id: 'ghibli', name: '吉卜力', icon: '/images/type2.png' },
+  { id: 'crayon', name: '蜡笔涂鸦', icon: '/images/type3.png' },
+  { id: 'sticker', name: '贴纸风', icon: '/images/type4.png' },
+  { id: 'lego', name: '积木风', icon: '/images/type5.png' },
+];
+
+// --- 2. 抽离元件 (Components) ---
+const ConfigBtn = ({ data, active, onClick, size = "normal" }) => (
+  <button 
+    onClick={onClick}
+    className={`flex flex-col items-center transition-all duration-300 transform ${
+      active ? 'scale-110 brightness-110' : 'grayscale-[0.2] opacity-90 hover:opacity-100 hover:scale-105'
+    }`}
+  >
+    {/* 尺寸大幅增加：普通从 w-14 -> w-28，Large 从 w-20 -> w-36 */}
+    <div className={`relative ${size === "large" ? "w-32 h-32 md:w-40 md:h-40" : "w-24 h-24 md:w-32 md:h-32"}`}>
+      <img src={data.icon} alt={data.name} className="w-full h-full object-contain" />
+      {active && (
+        // 选中框也要跟着加粗
+        <div className="absolute -inset-3 border-[6px] border-amber-400 rounded-3xl animate-pulse shadow-[0_0_20px_rgba(251,191,36,0.8)]" />
+      )}
+    </div>
+    {/* 文字调大到 text-xl，增加字间距 */}
+    <span className="mt-4 text-sm md:text-xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] tracking-widest">
+      {data.name}
+    </span>
+  </button>
+);
+
+export default function StoryBookApp() {
   // --- 状态管理 ---
-  const [prompt, setPrompt] = useState('');
+  const [scene, setScene] = useState<'home' | 'config' | 'loading' | 'reading'>('home');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
-  const [inputType, setInputType] = useState<'text' | 'voice'>('text');
-  const [role, setRole] = useState<'parent' | 'child'>('child');
-  const [style, setStyle] = useState<'animal' | 'human'>('animal');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // --- 生成逻辑 ---
+  // --- 配置选项 ---
+  const [inputMode, setInputMode] = useState('text');
+  const [voice, setVoice] = useState('mom');
+  const [style, setStyle] = useState('3d');
+  const [prompt, setPrompt] = useState('');
+
+  // --- 核心生成逻辑 ---
   const handleGenerate = async () => {
-    if (!prompt) return alert("请输入内容");
+    if (!prompt) return alert("写下你的创意吧~");
+    
+    setScene('loading');
     setLoading(true);
-    setResult(null);
-    setCurrentPage(1);
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, role, style }),
+        body: JSON.stringify({ prompt, voice, style, inputMode }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
         let finalData = data.output;
+        // 鲁棒性解析：处理百炼返回的字符串JSON
         if (finalData && typeof finalData.text === 'string') {
-          const trimmedText = finalData.text.trim();
-          if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
-            try {
-              finalData = JSON.parse(trimmedText);
-            } catch (e) {
-              finalData = { "1": trimmedText };
-            }
+          const trimmed = finalData.text.trim();
+          if (trimmed.startsWith('{')) {
+            try { finalData = JSON.parse(trimmed); } catch (e) { finalData = { "1": trimmed }; }
           } else {
-            finalData = { "1": trimmedText };
+            finalData = { "1": trimmed };
           }
         }
-        setResult(finalData); 
+        setResult(finalData);
+        setScene('reading');
+        setCurrentPage(1);
       } else {
-        alert("生成出错：" + (data.error || "未知错误"));
+        alert("魔法中断了: " + data.error);
+        setScene('config');
       }
     } catch (error) {
-      alert("网络错误，请稍后再试");
+      alert("网络连接失败");
+      setScene('config');
     } finally {
       setLoading(false);
     }
@@ -61,182 +105,162 @@ export default function Home() {
   const totalPages = result ? Object.keys(result).filter(k => !isNaN(Number(k))).length : 0;
 
   return (
-    /* 【位置 1】最外层容器，添加 relative 和 overflow-x-hidden */
-    <div className="relative min-h-screen text-slate-800 overflow-x-hidden">
+    <main className="relative w-full h-screen overflow-hidden bg-stone-900 select-none font-sans">
       
-      {/* 【位置 2】背景图层：它会固定在屏幕最底层 */}
-      <div className="fixed inset-0 -z-10">
-        {/* 背景图 */}
-        <img 
-          src="/background.jpg" 
-          alt="Background" 
-          className="w-full h-full object-cover" 
-        />
-        {/* 蒙版：让背景变模糊一点，并带上一层淡淡的琥珀色，增加梦幻感 */}
-        <div className="absolute inset-0 bg-white/40 backdrop-blur-md" />
-      </div>
-
-      {/* 顶部装饰条 */}
-      <div className="h-2 bg-gradient-to-r from-amber-400 via-orange-400 to-red-400" />
-
-      {/* 【位置 3】主内容区：它会浮在背景图上方 */}
-      <main className="relative z-10 max-w-4xl mx-auto px-6 py-12">
+      {/* ---------------- 场景：首页 ---------------- */}
+      {scene === 'home' && (
+  <div className="relative w-full h-full">
+    <img src="/images/bg-home.png" className="absolute inset-0 w-full h-full object-cover" />
+    
+    <div className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+      <button onClick={() => setScene('config')} className="relative group transition-transform hover:scale-110">
+        {/* 麦克风从 w-48 -> w-80 (约320px) */}
+        <img src="/images/micro.png" className="w-72 md:w-96 drop-shadow-2xl" />
+        <div className="absolute inset-0 rounded-full bg-orange-500/20 animate-ping -z-10" />
         
-        {/* 标题 */}
-        <div className="text-center mb-12">
-          <div className="inline-block p-4 bg-white/80 backdrop-blur rounded-full mb-4 shadow-xl shadow-amber-200/20">
-            <BookOpen className="w-10 h-10 text-amber-600" />
-          </div>
-          <h1 className="text-5xl font-extrabold text-slate-900 mb-4 drop-shadow-md">AI 梦幻绘本馆</h1>
-          <p className="text-xl text-slate-700 font-medium">在光影摇曳的树屋里，创作你的故事</p>
+        {/* 气泡提示也要变大 */}
+        <div className="absolute -top-24 -right-32 animate-bounce">
+          <img src="/bubble_hint.png" className="w-56 md:w-64" />
         </div>
+      </button>
+    </div>
 
-        {/* 交互控制中心：稍微增加了透明度，让它更有高级感 */}
-        <div className="bg-white/90 backdrop-blur-xl border-2 border-white rounded-[3rem] shadow-2xl p-6 md:p-10 mb-12 transition-all">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {/* 1. 角色选择 */}
-            <div className="space-y-3">
-              <label className="block text-xs font-black text-slate-400 text-center uppercase tracking-widest">阅读对象</label>
-              <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
-                <button 
-                  onClick={() => setRole('child')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${role === 'child' ? 'bg-white shadow-lg text-amber-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <Baby className="w-4 h-4" /> 宝贝
-                </button>
-                <button 
-                  onClick={() => setRole('parent')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${role === 'parent' ? 'bg-white shadow-lg text-amber-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <User className="w-4 h-4" /> 家长
-                </button>
-              </div>
-            </div>
+    {/* 左上角我的绘本图标 */}
+    <button className="absolute top-12 left-12 hover:rotate-6 transition-transform">
+      <img src="/icon_bookshelf.png" className="w-32 md:w-44" />
+    </button>
+  </div>
+)}
 
-            {/* 2. 输入方式 */}
-            <div className="space-y-3">
-              <label className="block text-xs font-black text-slate-400 text-center uppercase tracking-widest">输入方式</label>
-              <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
-                <button 
-                  onClick={() => setInputType('text')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${inputType === 'text' ? 'bg-white shadow-lg text-blue-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <Keyboard className="w-4 h-4" /> 文字
-                </button>
-                <button 
-                  onClick={() => setInputType('voice')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${inputType === 'voice' ? 'bg-white shadow-lg text-blue-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <Mic className="w-4 h-4" /> 语音
-                </button>
-              </div>
-            </div>
+      {/* ---------------- 场景：配置页 (我的秘密基地) ---------------- */}
+{scene === 'config' && (
+  <div className="relative w-full h-full">
+    <img src="/images/bg-config.png" className="absolute inset-0 w-full h-full object-cover" />
 
-            {/* 3. 风格选择 */}
-            <div className="space-y-3">
-              <label className="block text-xs font-black text-slate-400 text-center uppercase tracking-widest">主角类型</label>
-              <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
-                <button 
-                  onClick={() => setStyle('animal')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${style === 'animal' ? 'bg-white shadow-lg text-green-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <Dog className="w-4 h-4" /> 动物
-                </button>
-                <button 
-                  onClick={() => setStyle('human')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all font-bold ${style === 'human' ? 'bg-white shadow-lg text-green-600 scale-105' : 'text-slate-500'}`}
-                >
-                  <UserRound className="w-4 h-4" /> 人类
-                </button>
-              </div>
-            </div>
+    {/* 1. 输入模式：加宽间距 */}
+    <div className="absolute top-[30%] left-[18%] flex gap-16 md:gap-24">
+      {MODE_DATA.map(m => (
+        <ConfigBtn key={m.id} data={m} active={inputMode === m.id} onClick={() => setInputMode(m.id)} />
+      ))}
+    </div>
+
+    {/* 2. 音色选择：加宽间距 */}
+    <div className="absolute top-[42%] right-[12%] flex gap-10 md:gap-14">
+      {VOICE_DATA.map(v => (
+        <ConfigBtn key={v.id} data={v} active={voice === v.id} onClick={() => setVoice(v.id)} />
+      ))}
+    </div>
+
+    {/* 3. 绘本风格 (底部架子)：size="large" */}
+    <div className="absolute bottom-[22%] left-1/2 -translate-x-1/2 flex gap-8 md:gap-12">
+      {STYLE_DATA.map(s => (
+        <ConfigBtn key={s.id} data={s} active={style === s.id} size="large" onClick={() => setStyle(s.id)} />
+      ))}
+    </div>
+
+    {/* 家长锁：变大 */}
+    <button className="absolute top-[38%] left-1/2 -translate-x-1/2 hover:scale-110 transition-transform">
+      <img src="/images/lock.png" className="w-24 md:w-32" />
+      <p className="text-white font-black text-center mt-2 drop-shadow-md">进入家长模式</p>
+    </button>
+
+    {/* 返回键：变大 */}
+    <button onClick={() => setScene('home')} className="absolute top-10 left-10">
+      <img src="/btn_back_home.png" className="w-24 md:w-28" />
+    </button>
+  </div>
+)}
+
+      {/* ---------------- 场景：生成中 ---------------- */}
+      {scene === 'loading' && (
+        <div className="relative w-full h-full flex flex-col items-center justify-center bg-[#2a1b0e]">
+          <img src="/images/bg-config.png" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+          <div className="relative z-10 flex flex-col items-center">
+             <Loader2 className="w-24 h-24 text-amber-500 animate-spin mb-6" />
+             <h2 className="text-3xl font-black text-white tracking-[0.5em] drop-shadow-lg">魔法绘画中...</h2>
+             <p className="text-amber-200/60 mt-4 animate-pulse">正在为你的故事铺就色彩与旋律</p>
           </div>
+        </div>
+      )}
 
-          {/* 输入区域 */}
-          {inputType === 'text' ? (
-            <textarea
-              className="w-full text-lg p-6 bg-white/50 border-2 border-slate-100 rounded-[2rem] focus:ring-4 focus:ring-amber-200 focus:bg-white outline-none min-h-[120px] resize-none text-slate-700 transition-all shadow-inner"
-              placeholder={`在这里写下你想告诉宝贝的故事创意...`}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-          ) : (
-            <div className="w-full min-h-[120px] flex flex-col items-center justify-center bg-white/50 rounded-[2rem] border-2 border-dashed border-slate-200">
-              <div className="w-20 h-20 bg-amber-500 rounded-full flex items-center justify-center text-white mb-3 shadow-xl shadow-amber-200">
-                <Mic className="w-10 h-10" />
-              </div>
-              <p className="text-slate-400 font-medium">点击开启语音魔法</p>
-            </div>
-          )}
+      {/* ---------------- 场景：阅读页 ---------------- */}
+      {scene === 'reading' && result && (
+        <div className="relative w-full h-full animate-in zoom-in duration-1000">
+          <img src="/images/bg-reading.png" className="absolute inset-0 w-full h-full object-cover" />
           
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="w-full mt-8 py-5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-[2rem] font-black text-2xl transition-all shadow-xl shadow-amber-200/50 active:scale-[0.98] flex items-center justify-center gap-3"
-          >
-            {loading ? (
-              <><Loader2 className="animate-spin w-8 h-8" /> 魔法施展中...</>
-            ) : (
-              <><Sparkles className="w-8 h-8" /> 诞生我的绘本</>
-            )}
-          </button>
-        </div>
-
-        {/* 绘本播放器展示 */}
-        {result && (
-          <div className="max-w-2xl mx-auto animate-in fade-in zoom-in duration-1000">
-            <div className="bg-white rounded-[3.5rem] shadow-2xl overflow-hidden border-[16px] border-white ring-1 ring-slate-100 relative">
+          {/* 绘本主体 */}
+          <div className="absolute inset-0 flex items-center justify-center p-6 md:p-12">
+            <div className="relative w-full max-w-6xl aspect-[1.5/1] bg-white/5 rounded-2xl flex shadow-2xl overflow-hidden border-[12px] border-white/10">
               
-              {/* 图片展示区 */}
-              <div className="relative aspect-[4/3] bg-slate-50 overflow-hidden">
+              {/* 左页：大图展示 */}
+              <div className="flex-1 relative bg-stone-100 flex items-center justify-center p-4">
                 <img 
                   src={result[currentPage]} 
-                  alt={`第 ${currentPage} 页`}
-                  className="w-full h-full object-cover"
+                  className="max-w-full max-h-full object-contain rounded shadow-lg"
                   key={currentPage} 
                 />
-                <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-black/10 to-transparent pointer-events-none" />
-                <div className="absolute top-8 right-8 bg-black/30 backdrop-blur-md px-5 py-2 rounded-full text-white font-black text-sm">
-                  {currentPage} / {totalPages}
-                </div>
+                <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-black/10 to-transparent" />
               </div>
 
-              {/* 控制与音频区 */}
-              <div className="p-8 md:p-12">
-                <div className="mb-10 p-6 bg-amber-50 rounded-[2.5rem] border border-amber-100">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Music className="w-6 h-6 text-amber-500" />
-                    <span className="font-black text-amber-900 tracking-tight">故事配音 · 第 {currentPage} 页</span>
+              {/* 右页：文字与装饰 */}
+              <div className="flex-1 bg-white p-8 md:p-16 flex flex-col items-center justify-center text-center relative">
+                <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-black/10 to-transparent" />
+                <Sparkles className="w-8 h-8 text-amber-400 mb-6 opacity-50" />
+                <p className="text-2xl md:text-3xl font-medium text-stone-800 leading-relaxed italic">
+                  {result[`text_${currentPage}`] || "正在聆听星空的故事..."}
+                </p>
+                
+                {/* 独立音频控制 */}
+                <div className="mt-12 w-full p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                  <div className="flex items-center gap-2 mb-2 text-amber-800 font-bold text-sm">
+                    <Music className="w-4 h-4" /> 故事配音
                   </div>
-                  <audio 
-                    key={`audio-${currentPage}`} 
-                    controls 
-                    src={result[`audio_${currentPage}`] || result.audio} 
-                    className="w-full h-10" 
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-8">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(p => p - 1)}
-                    className="flex-1 py-5 flex items-center justify-center gap-2 rounded-2xl border-2 border-slate-100 hover:bg-slate-50 disabled:opacity-20 transition-all font-black text-slate-600"
-                  >
-                    <ChevronLeft className="w-8 h-8" /> 上一页
-                  </button>
-                  <button
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage(p => p + 1)}
-                    className="flex-1 py-5 flex items-center justify-center gap-2 rounded-2xl bg-slate-900 text-white hover:bg-black disabled:opacity-20 transition-all font-black shadow-xl"
-                  >
-                    下一页 <ChevronRight className="w-8 h-8" />
-                  </button>
+                  <audio key={`audio-${currentPage}`} controls src={result[`audio_${currentPage}`] || result.audio} className="w-full h-8" />
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </main>
-    </div>
+
+          {/* 底部控制栏 */}
+{/* 底部翻页控制 */}
+<div className="absolute bottom-10 inset-x-0 px-20 flex justify-between items-center">
+  <button 
+    disabled={currentPage === 1} 
+    onClick={() => setCurrentPage(p => p - 1)}
+    className="group flex flex-col items-center gap-2 disabled:opacity-30"
+  >
+    {/* 尺寸从 w-16 -> w-28 */}
+    <img src="/images/previous-page.png" className="w-24 md:w-32 group-hover:scale-110 transition-transform" />
+    <span className="text-white font-black text-lg drop-shadow-md">上一页</span>
+  </button>
+
+  {/* 页码显示 */}
+  <div className="px-12 py-4 bg-orange-900/60 backdrop-blur-xl border-4 border-white/20 rounded-full text-white font-black text-2xl">
+    {currentPage} / {totalPages}
+  </div>
+
+  <button 
+    disabled={currentPage >= totalPages} 
+    onClick={() => setCurrentPage(p => p + 1)}
+    className="group flex flex-col items-center gap-2 disabled:opacity-30"
+  >
+    <img src="/images/next-page.png" className="w-24 md:w-32 group-hover:scale-110 transition-transform" />
+    <span className="text-white font-black text-lg drop-shadow-md">下一页</span>
+  </button>
+</div>
+
+          {/* 返回配置 */}
+          <button onClick={() => setScene('config')} className="absolute top-10 left-10">
+            <img src="/btn_back.png" className="w-14 md:w-16 hover:scale-110 transition-transform" />
+          </button>
+        </div>
+      )}
+    </main>
   );
+}
+
+// 辅助函数：计算总页数 (如果是对象格式)
+function getTotalPages(result: any) {
+  if (!result) return 0;
+  return Object.keys(result).filter(k => !isNaN(Number(k))).length;
 }
