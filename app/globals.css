@@ -19,8 +19,25 @@
   }
 }
 
+/* 整合后的 body 样式 */
 body {
-  background: var(--background);
+  background: var(--background); /* 保留你原本的动态背景色 */
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  
+  /* AI 建议的新样式 */
+  cursor: url('/cursor_custom.png'), auto; /* 自定义指针 */
+  overflow: hidden; /* 禁用滚动条，请确认你是否真的需要整个页面不能滚动 */
+  -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+}
+
+/* 文字发光效果 - 自定义类 */
+.text-shadow {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* 按钮点击动画 */
+button:active {
+  transform: scale(0.95);
+  transition: 0.1s;
 }
